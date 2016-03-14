@@ -11,12 +11,21 @@ import Http
 
 type alias Todo =
   { completed : Bool
+  , title : String
   , order : Int
   , id : String
   , url : String
   }
 
-init = ["one", "two", "three"]
+init = []
+
+initTodo title =
+  { completed = False
+  , title = title
+  , order = 0
+  , id = 1
+  , url = ""
+  }
 
 -- VIEW
 
@@ -30,10 +39,18 @@ view address model =
       , ("#/completed", "Completed")
       ]
 
+    anySelected = List.any .completed model
+
+    clearCompleted =
+      if anySelected then
+        [button [class "clear-completed"] [text "Clear Completed"]]
+      else
+        []
+
     appFooter = footer [class "footer"]
-      [ span [class "todo-count"] [strong [] [text (toString (List.length model))], text " items left"]
+      ([ span [class "todo-count"] [strong [] [text (toString (List.length model))], text " items left"]
       , ul [class "filters"] filters
-      ]
+      ] ++ clearCompleted)
 
     infoFooter = footer [class "info"]
       [ p [] [text "Double-click to edit a todo"]
@@ -45,7 +62,10 @@ view address model =
         [ h1 [] [ text "todos" ]
         , input [class "new-todo", placeholder "What needs to be done?", autofocus True] []
         ]
-      , section [class "main"] [ul [class "todo-list"] (List.map viewTodo model)]
+      , section [class "main"]
+        [ input [class "toggle-all", type' "checkbox"] []
+        , ul [class "todo-list"] (List.map viewTodo model)
+        ]
       , appFooter
       ]
   in
@@ -55,12 +75,19 @@ view address model =
       ]
 
 viewTodo todo =
-  li [class "view"]
-    [ input [class "toggle", type' "checkbox"] []
-    , label [] [text "A todo."]
-    , button [class "destroy"] []
-    , input [class "edit", value "A todo."] []
-    ]
+  let
+    attributes =
+      if todo.completed then
+        [class "view", class "completed"]
+      else
+        [class "view"]
+  in
+    li attributes
+      [ input [class "toggle", type' "checkbox"] []
+      , label [] [text todo.title]
+      , button [class "destroy"] [text ""]
+      , input [class "edit", value todo.title] []
+      ]
 
 -- UPDATE
 
