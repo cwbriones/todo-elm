@@ -74,7 +74,7 @@ view address model =
 
     clearCompleted =
       if anySelected then
-        [button [class "clear-completed", onClick address ClearAll] [text "Clear Completed"]]
+        [button [class "clear-completed", onClick address ClearCompleted] [text "Clear Completed"]]
       else
         []
 
@@ -120,15 +120,15 @@ view address model =
 
 viewTodo address todo =
   let
-    attributes =
+    (checkedAttr, attributes) =
       if todo.completed then
-        [class "view", class "completed"]
+        ([checked True], [class "completed"])
       else
-        [class "view"]
+        ([], [class "view"])
     toggleCompleted = onClick address (ToggleCompleted todo.id)
   in
     li attributes
-      [ input [class "toggle", type' "checkbox", toggleCompleted] []
+      [ input (checkedAttr ++ [class "toggle", type' "checkbox", toggleCompleted]) []
       , label [] [text todo.title]
       , button [class "destroy"] [text ""]
       , input [class "edit", value todo.title] []
@@ -141,7 +141,7 @@ type Action id field todos
   | Create
   | UpdateField field
   | ToggleCompleted id
-  | ClearAll
+  | ClearCompleted
   | Success todos
 
 update action model =
@@ -158,7 +158,7 @@ update action model =
           (model, Effects.none)
       ToggleCompleted id ->
         (model, toggleCompleted id model.todos)
-      ClearAll -> (model, clearAll todos)
+      ClearCompleted -> (model, clearCompleted todos)
       Success newTodos -> ({model | todos = newTodos}, Effects.none)
 
 toggleCompleted id todos =
@@ -180,12 +180,17 @@ toggleCompleted id todos =
 replaceTodo newTodo todos =
   List.map (\t -> if t.id == newTodo.id then newTodo else t) todos
 
-clearAll todos =
+clearCompleted todos =
   let
-    url = "http://localhost:8080/todos"
-    request = httpDelete (succeed (Success [])) url
+    url = "http://localhost:8080/todos/completed"
+    remaining = List.filter (not << .completed) todos
+    request =
+      httpDelete
+        (Decode.succeed (Success remaining))
+        url
+        (Success remaining)
     neverFailingRequest =
-      Task.onError request (\_ -> Task.succeed (Success todos))
+      Task.onError request (\err -> Task.succeed (Success todos))
   in
     Effects.task neverFailingRequest
 
@@ -249,7 +254,8 @@ todoDecoder =
 
 -- HTTP
 
-httpDelete decoder url =
+httpDelete : Decode.Decoder (Action a b c) -> String -> (Action a b c) -> Task Http.RawError (Action a b c)
+httpDelete decoder url value =
   let request =
     { verb = "DELETE"
     , headers = []
@@ -257,7 +263,8 @@ httpDelete decoder url =
     , body = Http.empty
     }
   in
-    Http.fromJson decoder (Http.send Http.defaultSettings request)
+    (Http.send Http.defaultSettings request)
+      `Task.andThen` (\_ -> Task.succeed value)
 
 httpPatch : Decoder value -> String -> Http.Body -> Task Http.Error value
 httpPatch decoder url body =
