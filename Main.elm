@@ -50,24 +50,29 @@ type alias Model =
   { todos  : List Todo
   , field : String
   , id : Int
+  , visible : Todo -> Bool
   }
 
 init =
   { todos = []
   , field = ""
   , id = 0
+  , visible = \_ -> True
   }
 
 -- VIEW
 
 view address model =
   let
-    filterView = \(url, label) -> li [class "filter"] [a [href url] [text label]]
+    filterView = \(url, label, v) ->
+      li
+        [class "filter", onClick address (ChangeVisibility v)]
+        [a [href url] [text label]]
 
     filters = List.map filterView
-      [ ("", "All")
-      , ("#/active", "Active")
-      , ("#/completed", "Completed")
+      [ ("#", "All", \_ -> True)
+      , ("#/active", "Active", not << .completed)
+      , ("#/completed", "Completed", .completed)
       ]
 
     anySelected = List.any .completed model.todos
@@ -94,6 +99,9 @@ view address model =
         (Decode.customDecoder keyCode is13)
         (\_ -> Signal.message address value)
 
+    visibleTodos model =
+      List.filter model.visible model.todos
+
     todoApp = section [class "todoapp"]
       [ header [class "header"]
         [ h1 [] [ text "todos" ]
@@ -108,7 +116,7 @@ view address model =
         ]
       , section [class "main"]
         [ input [class "toggle-all", type' "checkbox"] []
-        , ul [class "todo-list"] (List.map (viewTodo address) model.todos)
+        , ul [class "todo-list"] (List.map (viewTodo address) (visibleTodos model))
         ]
       , appFooter
       ]
@@ -139,27 +147,31 @@ viewTodo address todo =
 type Action id field todos
   = Destroy id
   | Create
+  | ChangeVisibility (Todo -> Bool)
   | UpdateField field
   | ToggleCompleted id
   | ClearCompleted
   | Success todos
+
+noFx m = (m, Effects.none)
 
 update action model =
   let
     todos = model.todos
   in
     case action of
-      UpdateField field -> ({model | field = field}, Effects.none)
-      Destroy id -> (model, Effects.none)
+      UpdateField field -> noFx {model | field = field}
+      Destroy id -> noFx model
       Create ->
         if model.field /= "" then
           createTodo model
         else
-          (model, Effects.none)
+          noFx model
       ToggleCompleted id ->
         (model, toggleCompleted id model.todos)
       ClearCompleted -> (model, clearCompleted todos)
-      Success newTodos -> ({model | todos = newTodos}, Effects.none)
+      ChangeVisibility v -> noFx {model | visible = v}
+      Success newTodos -> noFx {model | todos = newTodos}
 
 toggleCompleted id todos =
   let
