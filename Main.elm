@@ -2,7 +2,13 @@ module Main (..) where
 
 import StartApp
 import Html exposing (..)
-import Html.Events exposing (on, onKeyDown, targetValue, keyCode)
+import Html.Events exposing
+  ( on
+  , onClick
+  , onKeyDown
+  , targetValue
+  , keyCode)
+
 import Html.Attributes exposing (..)
 import Effects
 
@@ -68,7 +74,7 @@ view address model =
 
     clearCompleted =
       if anySelected then
-        [button [class "clear-completed"] [text "Clear Completed"]]
+        [button [class "clear-completed", onClick address ClearAll] [text "Clear Completed"]]
       else
         []
 
@@ -91,7 +97,7 @@ view address model =
     todoApp = section [class "todoapp"]
       [ header [class "header"]
         [ h1 [] [ text "todos" ]
-        , input 
+        , input
           [ class "new-todo"
           , placeholder "What needs to be done?"
           , autofocus True
@@ -102,7 +108,7 @@ view address model =
         ]
       , section [class "main"]
         [ input [class "toggle-all", type' "checkbox"] []
-        , ul [class "todo-list"] (List.map viewTodo model.todos)
+        , ul [class "todo-list"] (List.map (viewTodo address) model.todos)
         ]
       , appFooter
       ]
@@ -112,16 +118,17 @@ view address model =
       , infoFooter
       ]
 
-viewTodo todo =
+viewTodo address todo =
   let
     attributes =
       if todo.completed then
         [class "view", class "completed"]
       else
         [class "view"]
+    toggleCompleted = onClick address (ToggleCompleted todo.id)
   in
     li attributes
-      [ input [class "toggle", type' "checkbox"] []
+      [ input [class "toggle", type' "checkbox", toggleCompleted] []
       , label [] [text todo.title]
       , button [class "destroy"] [text ""]
       , input [class "edit", value todo.title] []
@@ -133,7 +140,7 @@ type Action id field todos
   = Destroy id
   | Create
   | UpdateField field
-  | MarkAsCompleted id
+  | ToggleCompleted id
   | ClearAll
   | Success todos
 
@@ -149,9 +156,29 @@ update action model =
           createTodo model
         else
           (model, Effects.none)
-      MarkAsCompleted id -> (model, Effects.none)
+      ToggleCompleted id ->
+        (model, toggleCompleted id model.todos)
       ClearAll -> (model, clearAll todos)
       Success newTodos -> ({model | todos = newTodos}, Effects.none)
+
+toggleCompleted id todos =
+  let
+    toggled t =
+      if t.completed then
+        { t | completed = False}
+      else
+        { t | completed = True}
+
+    todo = List.filter (\t -> t.id == id) todos
+  in
+    case todo of
+      t :: ts ->
+        patchTodo (toggled t) (replaceTodo (toggled t) todos)
+      _ ->
+        Effects.none
+
+replaceTodo newTodo todos =
+  List.map (\t -> if t.id == newTodo.id then newTodo else t) todos
 
 clearAll todos =
   let
@@ -188,13 +215,14 @@ createTodo model =
   in
     ( { model | id = nextId, field = ""}, Effects.task neverFailingRequest )
 
-patchTodo : List Todo -> Todo -> Effects.Effects (Action b c (List Todo))
-patchTodo todos todo =
+patchTodo : Todo -> List Todo -> Effects.Effects (Action b c (List Todo))
+patchTodo todo todos =
   let
-    url = todo.url
-    request = httpPatch (succeed (Success todos)) url (encodeTodo todo)
+    request = httpPatch todoDecoder todo.url (encodeTodo todo)
+    onSuccess = \_ -> Success todos
+    onError = \_ -> Task.succeed (Success todos)
     neverFailingRequest =
-      Task.onError request (\_ -> Task.succeed (Success todos))
+      Task.onError (Task.map onSuccess request) onError
   in
     Effects.task neverFailingRequest
 
